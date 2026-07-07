@@ -1,0 +1,42 @@
+{
+  "name": "elena---ia-de-ventas-energéticas",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "start": "tsx server.ts",
+    "build": "vite build --emptyOutDir",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@google/genai": "^1.41.0",
+    "@tailwindcss/vite": "^4.2.1",
+    "alawmulaw": "^6.0.0",
+    "clsx": "^2.1.1",
+    "express": "^5.2.1",
+    "lucide-react": "^0.575.0",
+    "motion": "^12.34.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "recharts": "^3.7.0",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.2.1",
+    "tsx": "^4.21.0",
+    "twilio": "^5.13.1",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^5.0.0"
+  }
+}

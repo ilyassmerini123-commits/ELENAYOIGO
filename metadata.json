@@ -1,0 +1,8 @@
+{
+  "name": "Elena AI by Teltelecom",
+  "description": "Plataforma de IA de voz para Call Centers desarrollada por Teltelecom SARL. Demo de campaña de Aislamientos Térmicos Energía SL.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
