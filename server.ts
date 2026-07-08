@@ -160,6 +160,110 @@ async function startServer() {
     }
   });
 
+  // --- AUDIO UPLOAD ENDPOINT ---
+  app.post("/api/upload-audio", (req, res) => {
+    try {
+      const { filename, data } = req.body;
+      if (!filename || !data) {
+        return res.status(400).json({ error: "Faltan parámetros: filename y data (base64) son requeridos." });
+      }
+      
+      let base64Data = data;
+      if (data.includes('base64,')) {
+        base64Data = data.split('base64,')[1];
+      }
+      
+      const buffer = Buffer.from(base64Data, 'base64');
+      
+      const audioDir = path.join(process.cwd(), 'public', 'audio');
+      if (!fs.existsSync(audioDir)) {
+        fs.mkdirSync(audioDir, { recursive: true });
+      }
+      
+      const safeFilename = filename.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      const filePath = path.join(audioDir, safeFilename);
+      fs.writeFileSync(filePath, buffer);
+      
+      console.log(`[Upload] Guardado audio de campaña en: ${filePath}`);
+      
+      res.json({
+        success: true,
+        url: `/audio/${safeFilename}`,
+        filename: safeFilename
+      });
+    } catch (error: any) {
+      console.error("Error al subir audio:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // --- TTS GENERATION ENDPOINT ---
+  app.post("/api/generate-tts", async (req, res) => {
+    try {
+      const { text, voice } = req.body;
+      if (!text) {
+        return res.status(400).json({ error: "Falta el texto para la locución." });
+      }
+
+      let voiceName = 'Kore'; // prebuilt voice name in Gemini
+      if (voice) {
+        if (voice.includes('Wavenet-D') || voice.includes('Male')) {
+          voiceName = 'Zephyr';
+        } else if (voice.includes('Wavenet-C') || voice.includes('Femenina')) {
+          voiceName = 'Kore';
+        } else if (voice.includes('Neural2-F')) {
+          voiceName = 'Puck';
+        }
+      }
+
+      const ai = getAiClient();
+      console.log(`[TTS] Generando locución con voz ${voiceName} para el texto: "${text.substring(0, 50)}..."`);
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-flash-tts-preview",
+        contents: [{ parts: [{ text: `Lee el siguiente mensaje en español con tono profesional, amable y claro: ${text}` }] }],
+        config: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: voiceName }
+            }
+          }
+        }
+      });
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (!base64Audio) {
+        return res.status(500).json({ error: "La API de Gemini no devolvió datos de audio." });
+      }
+
+      const audioDir = path.join(process.cwd(), 'public', 'audio');
+      if (!fs.existsSync(audioDir)) {
+        fs.mkdirSync(audioDir, { recursive: true });
+      }
+
+      const filename = `tts_${Date.now()}.wav`;
+      const filePath = path.join(audioDir, filename);
+      
+      const buffer = Buffer.from(base64Audio, 'base64');
+      fs.writeFileSync(filePath, buffer);
+
+      console.log(`[TTS] Guardado audio generado en: ${filePath}`);
+
+      res.json({
+        success: true,
+        url: `/audio/${filename}`,
+        filename: filename
+      });
+    } catch (error: any) {
+      console.error("Error al generar TTS:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Serve the public/audio folder statically
+  app.use('/audio', express.static(path.join(process.cwd(), 'public/audio')));
+
   // Middleware para registrar todas las peticiones
   app.use((req, res, next) => {
     console.log(`[${req.method}] ${req.url} - Headers: ${JSON.stringify(req.headers)}`);

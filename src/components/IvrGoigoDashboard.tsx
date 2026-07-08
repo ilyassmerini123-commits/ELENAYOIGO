@@ -86,35 +86,130 @@ export default function IvrGoigoDashboard() {
   
   // App states
   const [pbxConfig, setPbxConfig] = useState<PbxConfig>({
-    pbxType: 'asterisk',
-    host: '192.168.1.150',
-    port: '5038',
-    username: 'goigouser',
-    secret: 'SuperSecretAMIKey2026',
+    pbxType: 'custom_sip',
+    host: '178.79.157.150',
+    port: '5060',
+    username: '3698841010',
+    secret: 'NcAChIPhIu3jLl1T641HwW1',
     amiEnabled: true,
-    sipTrunkName: 'Trunk_Goigo_SIP',
-    isConnected: false
+    sipTrunkName: 'Trunk_Yoigo_SIP',
+    isConnected: true
   });
 
   const [campaignFlow, setCampaignFlow] = useState<CampaignFlow>({
     welcomeAudioUrl: '',
-    welcomeText: 'Hola, le llamamos de Goigo Soluciones. Si está interesado en recibir información sobre instalación de paneles solares gratuitos con subvención europea, presione 1. Si desea agendar una llamada personalizada, presione 2. Si quiere darse de baja de nuestra lista, presione 3. Para hablar con un asesor especializado en directo, presione 4.',
+    welcomeText: 'Hola soy Laura Le llamamos de Yoigo. Disfrute de nuestra fibra 600 megas, y dos líneas móviles ilimitadas por solo 33€ más IVA. Como beneficio exclusivo, tendrá acceso a terminales desde solo 1 euro, o la posibilidad de financiar los nuevos iPhone 17 Pro Max y Android. El pack incluye televisión gratuita y asesoría jurídica gratuita para siempre. Y si tiene una segunda vivienda por solo 13€ más IVA para mas detalles pulse 1. Si no le interesa, pulse 2. Para que le llamemos en otro momento, pulse 3.',
     useTts: true,
-    ttsVoice: 'es-ES-Wavenet-D',
+    ttsVoice: 'es-ES-Neural2-F',
     keyActions: {
-      '1': { action: 'TAG_INTEREST', label: 'Interesado en Placas Solares', audioText: 'Perfecto. Hemos registrado su interés. Un asesor le llamará en unos minutos. Gracias.' },
-      '2': { action: 'SCHEDULE_CALL', label: 'Agendar Llamada Comercial', audioText: 'Entendido, nos pondremos en contacto con usted mañana a esta misma hora.' },
-      '3': { action: 'OPT_OUT', label: 'Baja / No Volver a Llamar', audioText: 'Lamentamos las molestias, su número ha sido eliminado de la base de datos.' },
-      '4': { action: 'TRANSFER', label: 'Transferir a Agente (Ext 100)', redirectExt: '100', audioText: 'Le transferimos en directo con nuestro asesor. Por favor espere.' }
+      '1': { action: 'TAG_INTEREST', label: 'Más Detalles / Interés Yoigo', audioText: 'Perfecto. Hemos registrado su interés. Un asesor de Yoigo le llamará en unos minutos. Gracias.' },
+      '2': { action: 'OPT_OUT', label: 'No Interesado / Lista de Exclusión', audioText: 'Lamentamos las molestias, su número ha sido eliminado de nuestra base de datos.' },
+      '3': { action: 'SCHEDULE_CALL', label: 'Llamar en otro momento', audioText: 'Entendido, agendamos la llamada de seguimiento para otro momento más oportuno. ¡Hasta luego!' },
+      '4': { action: 'TRANSFER', label: 'Transferir a Agente (Ext 100)', redirectExt: '100', audioText: 'Le transferimos en directo con nuestro asesor de Yoigo. Por favor espere.' }
     }
   });
 
+  const [uploading, setUploading] = useState(false);
+  const [generatingTts, setGeneratingTts] = useState(false);
+  const [playStatus, setPlayStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const handlePlayAudio = (url: string) => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    if (playStatus === url) {
+      setPlayStatus(null);
+      return;
+    }
+    audioRef.current = new Audio(url);
+    audioRef.current.play()
+      .then(() => {
+        setPlayStatus(url);
+        audioRef.current!.onended = () => {
+          setPlayStatus(null);
+        };
+      })
+      .catch(err => {
+        console.error("Error playing audio:", err);
+        alert("No se pudo reproducir el archivo de audio. Asegúrate de haberlo cargado o generado primero.");
+      });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = reader.result as string;
+        const response = await fetch('/api/upload-audio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: file.name, data: base64String })
+        });
+        const result = await response.json();
+        if (result.success) {
+          setCampaignFlow(prev => ({
+            ...prev,
+            welcomeAudioUrl: result.url
+          }));
+          alert(`¡Audio subido con éxito!: ${result.filename}`);
+        } else {
+          alert(`Error al subir: ${result.error || 'Intente de nuevo'}`);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (error: any) {
+      console.error(error);
+      alert(`Error de lectura: ${error.message}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleGenerateTts = async () => {
+    if (!campaignFlow.welcomeText) {
+      alert("Por favor ingresa un mensaje de bienvenida.");
+      return;
+    }
+    setGeneratingTts(true);
+    try {
+      const response = await fetch('/api/generate-tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: campaignFlow.welcomeText,
+          voice: campaignFlow.ttsVoice
+        })
+      });
+      const result = await response.json();
+      if (result.success) {
+        setCampaignFlow(prev => ({
+          ...prev,
+          welcomeAudioUrl: result.url
+        }));
+        alert(`¡Audio de Voz AI generado con éxito! Nombre: ${result.filename}`);
+      } else {
+        alert(`Error de generación: ${result.error || 'Verifique su clave API de Gemini'}`);
+      }
+    } catch (error: any) {
+      console.error(error);
+      alert(`Error de red: ${error.message}`);
+    } finally {
+      setGeneratingTts(false);
+    }
+  };
+
   const [leads, setLeads] = useState<LeadIVR[]>([
-    { id: '1', name: 'Juan Gómez', phone: '+34612345678', status: 'COMPLETADO', dtmf: '1', duration: 32, timestamp: '12:35:10', notes: 'Interesado en Placas Solares' },
-    { id: '2', name: 'María Rodríguez', phone: '+34622334455', status: 'COMPLETADO', dtmf: '4', duration: 45, timestamp: '12:38:22', notes: 'Transferido a Agente (Ext 100)' },
+    { id: '1', name: 'Juan Gómez', phone: '+34612345678', status: 'COMPLETADO', dtmf: '1', duration: 32, timestamp: '12:35:10', notes: 'Interesado en Yoigo' },
+    { id: '2', name: 'María Rodríguez', phone: '+34622334455', status: 'COMPLETADO', dtmf: '4', duration: 45, timestamp: '12:38:22', notes: 'Transferido a Agente' },
     { id: '3', name: 'Carlos López', phone: '+34699887766', status: 'SIN_RESPUESTA', dtmf: '', duration: 0, timestamp: '12:40:05', notes: 'Llamada no contestada' },
-    { id: '4', name: 'Ana Belén Martínez', phone: '+34677553311', status: 'COMPLETADO', dtmf: '2', duration: 28, timestamp: '12:41:40', notes: 'Agendada llamada de seguimiento' },
-    { id: '5', name: 'Pedro Sánchez', phone: '+34655442211', status: 'COMPLETADO', dtmf: '3', duration: 15, timestamp: '12:43:11', notes: 'Dado de baja de la lista' }
+    { id: '4', name: 'Ana Belén Martínez', phone: '+34677553311', status: 'COMPLETADO', dtmf: '2', duration: 28, timestamp: '12:41:40', notes: 'No interesado' },
+    { id: '5', name: 'Pedro Sánchez', phone: '+34655442211', status: 'COMPLETADO', dtmf: '3', duration: 15, timestamp: '12:43:11', notes: 'Llamar en otro momento' }
   ]);
 
   useEffect(() => {
@@ -213,8 +308,8 @@ exten => no_valido,1,Playback(custom/error_opcion)
  same => n,Hangup()`;
 
   const asteriskAmiConfig = `; Configuración en /etc/asterisk/manager.conf para que Goigo IVR lance llamadas
-[goigouser]
-secret = SuperSecretAMIKey2026
+[${pbxConfig.username}]
+secret = ${pbxConfig.secret}
 deny = 0.0.0.0/0.0.0.0
 permit = 127.0.0.1/255.255.255.255
 permit = YOUR_NODE_SERVER_IP/255.255.255.255
@@ -226,8 +321,8 @@ import Net from 'net';
 
 function originateCall(clientPhone, clientName) {
   const client = new Net.Socket();
-  client.connect(5038, 'YOUR_ASTERISK_IP', () => {
-    client.write('Action: Login\\r\\nUsername: goigouser\\r\\nSecret: SuperSecretAMIKey2026\\r\\n\\r\\n');
+  client.connect(${pbxConfig.port}, '${pbxConfig.host}', () => {
+    client.write('Action: Login\\r\\nUsername: ${pbxConfig.username}\\r\\nSecret: ${pbxConfig.secret}\\r\\n\\r\\n');
   });
 
   client.on('data', (data) => {
@@ -235,7 +330,7 @@ function originateCall(clientPhone, clientName) {
     if (response.includes('Success') && response.includes('Authentication accepted')) {
       // Lanzar llamada saliente a través del Trunk de llamadas propio
       const originateCmd = \`Action: Originate\\r\\n\` +
-        \`Channel: SIP/Trunk_Goigo_SIP/\${clientPhone}\\r\\n\` +
+        \`Channel: SIP/${pbxConfig.sipTrunkName}/\${clientPhone}\\r\\n\` +
         \`Context: ivr-goigo-context\\r\\n\` +
         \`Exten: s\\r\\n\` +
         \`Priority: 1\\r\\n\` +
@@ -311,6 +406,16 @@ function originateCall(clientPhone, clientName) {
         `[${new Date().toLocaleTimeString()}] Reproduciendo audio de campaña: "${campaignFlow.welcomeText.substring(0, 50)}..."`,
         `[${new Date().toLocaleTimeString()}] PBX esperando pulsación DTMF de tecla (1, 2, 3 o 4)`
       ]);
+
+      if (campaignFlow.welcomeAudioUrl) {
+        if (audioRef.current) audioRef.current.pause();
+        audioRef.current = new Audio(campaignFlow.welcomeAudioUrl);
+        audioRef.current.play().catch(e => console.log("Sim play error:", e));
+      } else {
+        const speech = new SpeechSynthesisUtterance(campaignFlow.welcomeText);
+        speech.lang = 'es-ES';
+        window.speechSynthesis.speak(speech);
+      }
     }, 6000);
   };
 
@@ -318,6 +423,11 @@ function originateCall(clientPhone, clientName) {
   const pressSimKey = (key: string) => {
     if (simCallState !== 'PLAYING_AUDIO' && simCallState !== 'CONNECTED') return;
     setSimKeyPressed(key);
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    window.speechSynthesis.cancel();
     
     // Find the mapping text/action
     const actionObj = campaignFlow.keyActions[key as '1' | '2' | '3' | '4'];
@@ -327,6 +437,9 @@ function originateCall(clientPhone, clientName) {
     // Play transition audio response
     setTimeout(() => {
       setSimLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] PBX reproduce audio de acción: "${actionObj.audioText}"`]);
+      const speech = new SpeechSynthesisUtterance(actionObj.audioText);
+      speech.lang = 'es-ES';
+      window.speechSynthesis.speak(speech);
     }, 1000);
 
     // Finish call
@@ -337,6 +450,8 @@ function originateCall(clientPhone, clientName) {
         `[${new Date().toLocaleTimeString()}] Fin de llamada. Enviando webhook final DTMF='${key}' al servidor.`,
         `[${new Date().toLocaleTimeString()}] Canal SIP colgado de forma segura (Hangup).`
       ]);
+
+      window.speechSynthesis.cancel();
 
       // Update leads state
       setLeads(prev => prev.map(l => {
@@ -352,7 +467,7 @@ function originateCall(clientPhone, clientName) {
         return l;
       }));
       setSimActiveLead(null);
-    }, 3500);
+    }, 4500);
   };
 
   // Cancel Sim Call
@@ -360,6 +475,11 @@ function originateCall(clientPhone, clientName) {
     if (simCallState === 'IDLE' || simCallState === 'COMPLETED') return;
     setSimCallState('COMPLETED');
     setSimLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Interrupción forzada. Llamada cancelada.`]);
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    window.speechSynthesis.cancel();
     
     setLeads(prev => prev.map(l => {
       if (simActiveLead && l.id === simActiveLead.id) {
@@ -805,39 +925,94 @@ function originateCall(clientPhone, clientName) {
                           onChange={(e) => setCampaignFlow(prev => ({ ...prev, ttsVoice: e.target.value }))}
                           className="w-full bg-[#070913] border border-white/10 rounded-2xl px-4 py-3.5 text-sm font-semibold text-white focus:outline-none focus:border-cyan-500/50 transition-all"
                         >
-                          <option value="es-ES-Wavenet-D">Español de España - Voz Masculina (Wavenet D)</option>
+                          <option value="es-ES-Neural2-F">Español de España - Laura (Voz Femenina Natural Neural2)</option>
                           <option value="es-ES-Wavenet-C">Español de España - Voz Femenina (Wavenet C)</option>
+                          <option value="es-ES-Wavenet-D">Español de España - Voz Masculina (Wavenet D)</option>
                           <option value="es-LA-Wavenet-A">Español Latinoamericano - Voz Femenina (Wavenet A)</option>
-                          <option value="es-ES-Neural2-F">Español España - Voz Femenina Natural (Neural2)</option>
                         </select>
                       </div>
-                      <div className="bg-[#070913] p-4 rounded-2xl border border-white/5 flex items-center justify-between">
+                      <div className="bg-[#070913] p-4 rounded-2xl border border-white/5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                         <div>
-                          <p className="text-xs font-bold text-white">Prueba de Audio Local</p>
-                          <p className="text-[10px] text-white/40 mt-1">Genera y escucha la locución mediante el sintetizador integrado</p>
+                          <p className="text-xs font-bold text-white">Pruebas de Audio y Locución</p>
+                          <p className="text-[10px] text-white/40 mt-1">Genera o escucha la locución mediante el sintetizador integrado o Gemini</p>
                         </div>
-                        <button 
-                          onClick={() => {
-                            const speech = new SpeechSynthesisUtterance(campaignFlow.welcomeText);
-                            speech.lang = 'es-ES';
-                            window.speechSynthesis.speak(speech);
-                          }}
-                          className="bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5"
-                        >
-                          <Volume2 className="w-4 h-4" />
-                          <span>Escuchar Locución</span>
-                        </button>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <button 
+                            onClick={() => {
+                              const speech = new SpeechSynthesisUtterance(campaignFlow.welcomeText);
+                              speech.lang = 'es-ES';
+                              window.speechSynthesis.speak(speech);
+                            }}
+                            className="bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 text-white px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5"
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                            <span>Escuchar Local</span>
+                          </button>
+                          <button 
+                            onClick={handleGenerateTts}
+                            disabled={generatingTts}
+                            className="bg-cyan-500 text-black px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider hover:brightness-110 transition-all flex items-center justify-center space-x-1.5 disabled:opacity-50"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                            <span>{generatingTts ? 'Generando...' : 'Generar Real (Voz IA)'}</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-[#070913] border border-dashed border-white/10 rounded-2xl p-8 text-center flex flex-col items-center justify-center">
+                  <div className="bg-[#070913] border border-dashed border-white/10 rounded-2xl p-8 text-center flex flex-col items-center justify-center relative">
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept="audio/*" 
+                      onChange={handleFileUpload} 
+                    />
                     <FileAudio className="w-12 h-12 text-cyan-400 mb-3" />
                     <p className="text-sm font-bold text-white">Arrastra o sube tu archivo .WAV de campaña</p>
                     <p className="text-[10px] text-white/40 mt-1 max-w-sm">Recomendado: Mono, 8000Hz o 16000Hz PCM, 16 bits (Formatos estándar compatibles con Asterisk PBX / SIP)</p>
-                    <button className="bg-cyan-500 text-black px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider mt-4 hover:brightness-110 transition-all">
-                      Seleccionar Archivo Audio
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="bg-cyan-500 text-black px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider mt-4 hover:brightness-110 transition-all disabled:opacity-50"
+                    >
+                      {uploading ? 'Subiendo...' : 'Seleccionar Archivo Audio'}
                     </button>
+                  </div>
+                )}
+
+                {/* Shared Active Audio File Preview */}
+                {campaignFlow.welcomeAudioUrl && (
+                  <div className="mt-6 bg-cyan-500/10 border border-cyan-500/20 p-4 rounded-2xl flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-cyan-500/20 rounded-xl flex items-center justify-center text-cyan-400">
+                        <Volume2 className="w-5 h-5 animate-bounce" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-white">Audio Activo Registrado para el IVR</p>
+                        <p className="text-[10px] text-cyan-400 font-mono mt-0.5">{campaignFlow.welcomeAudioUrl}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button 
+                        onClick={() => handlePlayAudio(campaignFlow.welcomeAudioUrl)}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all border ${
+                          playStatus === campaignFlow.welcomeAudioUrl 
+                            ? 'bg-red-500/20 border-red-500/30 text-red-400 hover:bg-red-500/30' 
+                            : 'bg-cyan-500 text-black border-cyan-400 hover:brightness-110'
+                        }`}
+                      >
+                        {playStatus === campaignFlow.welcomeAudioUrl ? 'Detener' : 'Escuchar WAV'}
+                      </button>
+                      <button 
+                        onClick={() => setCampaignFlow(prev => ({ ...prev, welcomeAudioUrl: '' }))}
+                        className="bg-white/5 border border-white/10 hover:bg-red-500/20 hover:border-red-500/30 hover:text-red-400 p-2 rounded-xl text-white/60 transition-all"
+                        title="Eliminar audio activo"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
